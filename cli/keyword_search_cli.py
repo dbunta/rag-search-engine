@@ -3,6 +3,7 @@
 import argparse
 import json
 import string
+from nltk.stem import PorterStemmer
 
 
 def main() -> None:
@@ -38,7 +39,7 @@ def main() -> None:
         case _:
             parser.print_help()
 
-def tokenize(search):
+def tokenize(search, stopwords):
     search = search.lower()
     dict = {}
     for punc in string.punctuation:
@@ -46,27 +47,47 @@ def tokenize(search):
     table = str.maketrans(dict)
     search = search.translate(table)
     searchTerms = search.split()
+    searchTerms = [t for t in searchTerms if t not in stopwords]
+    stemmer = PorterStemmer()
+    for index, st in enumerate(searchTerms):
+        searchTerms[index] = stemmer.stem(st)
+
     return searchTerms
 
 def search(search):
     results = []
+    stopwords = []
+    movies = {}
+
+    with open("./data/stopwords.txt", "r") as stopwordsFile:
+        stopwords = stopwordsFile.read().splitlines()
+
     with open("./data/movies.json", "r") as file:
         data = json.load(file)
         if "movies" not in data:
             print("ERROR: Key 'movies' not found in dictionary")
             return
         movies = data.get("movies")
-        for movie in movies:
-            if "title" not in movie:
-                print("ERROR: Key 'title' not found in dictionary")
-            title = movie.get("title")
-            searchTokens = tokenize(search)
-            targetTokens = tokenize(title)
+
+    for movie in movies:
+        if "title" not in movie:
+            print("ERROR: Key 'title' not found in dictionary")
+        title = movie.get("title")
+        searchTokens = tokenize(search, stopwords)
+        targetTokens = tokenize(title, stopwords)
+        previousSearchToken = ""
+        isAdded = False
+        for searchToken in searchTokens:
+            if searchToken != previousSearchToken and isAdded:
+                isAdded = False
+                previousSearchToken = searchToken
+                continue
             for targetToken in targetTokens:
-                for searchToken in searchTokens:
-                    if searchToken in targetToken:
-                        results.append(movie)
-                        break
+                if searchToken in targetToken:
+                    results.append(movie)
+                    isAdded = True
+                    break
+            previousSearchToken = searchToken
     return sorted(results, key=lambda movie: movie["id"])
 
 
