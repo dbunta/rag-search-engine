@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import string
 
 
 def main() -> None:
@@ -12,13 +13,16 @@ def main() -> None:
     search_parser.add_argument("query", type=str, help="Search query")
 
     test = subparsers.add_parser("test", help="test functionality")
+    test.add_argument("query", type=str, help="Search query")
 
     args = parser.parse_args()
 
     match args.command:
         case "search":
             print(f"Searching for: {args.query}")
+            # searchTerms = tokenizeSearch(args.query) 
             results = search(args.query)
+            # results = search(args.query)
             if len(results) == 0:
                 print("No results")
             else:
@@ -27,9 +31,22 @@ def main() -> None:
                         return
                     print(f"{index+1}. {result["title"]}")
         case "test":
-            search("test")
+            terms = tokenize(args.query)
+            test = ["its", "magic"]
+            test2 = any(item in terms for item in test)
+            print(test2)
         case _:
             parser.print_help()
+
+def tokenize(search):
+    search = search.lower()
+    dict = {}
+    for punc in string.punctuation:
+        dict[punc] = None
+    table = str.maketrans(dict)
+    search = search.translate(table)
+    searchTerms = search.split()
+    return searchTerms
 
 def search(search):
     results = []
@@ -43,8 +60,13 @@ def search(search):
             if "title" not in movie:
                 print("ERROR: Key 'title' not found in dictionary")
             title = movie.get("title")
-            if search in title:
-                results.append(movie)
+            searchTokens = tokenize(search)
+            targetTokens = tokenize(title)
+            for targetToken in targetTokens:
+                for searchToken in searchTokens:
+                    if searchToken in targetToken:
+                        results.append(movie)
+                        break
     return sorted(results, key=lambda movie: movie["id"])
 
 
