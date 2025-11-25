@@ -23,33 +23,34 @@ def main() -> None:
     test.add_argument("query", type=str, help="Search query")
 
     args = parser.parse_args()
-
     match args.command:
         case "search":
             print(f"Searching for: {args.query}")
             # searchTerms = tokenizeSearch(args.query) 
             results = search(args.query)
             # results = search(args.query)
-            if len(results) == 0:
-                print("No results")
-            else:
-                for index, result in enumerate(results):
-                    if index > 4:
-                        return
-                    print(f"{index+1}. {result["title"]}")
+            for r in results:
+                print(f"{r["id"]}  {r["title"]}")
+            # if len(results) == 0:
+            #     print("No results")
+            # else:
+            #     for index, result in enumerate(results):
+            #         if index > 4:
+            #             return
+            #         # print(f"{index+1}. {result["title"]}")
+            #         print(f"{result["id"]} {result["title"]}")
         case "build":
             ii = InvertedIndex()
             print("Building movies index")
             ii.build()
             print("Saving movies index to disk")
             ii.save()
-            docs = ii.get_documents("merida")
-            print(f"First document for token 'merida' = {docs[0]}")
         case "test":
-            terms = tokenize(args.query)
-            test = ["its", "magic"]
-            test2 = any(item in terms for item in test)
-            print(test2)
+            # terms = tokenize(args.query)
+            ii = InvertedIndex()
+            ii.load()
+            docs = ii.get_documents("merida")
+            print(docs)
         case _:
             parser.print_help()
             
@@ -63,7 +64,7 @@ class InvertedIndex:
     def __add_document(self, doc_id, text):
         tokens = tokenize(text)
         for token in tokens:
-            if token in self.index:
+            if token in self.index and doc_id not in self.index[token]:
                 self.index[token].append(doc_id)
             else:
                 self.index[token] = [doc_id]
@@ -101,13 +102,24 @@ class InvertedIndex:
             self.docmap[id] = movie
     
     def save(self):
-        if (not os.path.isdir("./cache")):
+        if not os.path.isdir("./cache"):
             os.mkdir("./cache")
 
         with open("./cache/index.pkl", "wb") as f1:
             pickle.dump(self.index, f1)
         with open("./cache/docmap.pkl", "wb") as f2:
             pickle.dump(self.docmap, f2)
+    
+    def load(self):
+        if not os.path.exists("./cache/index.pkl"):
+            raise("ERROR: ./cache/index.pkl does not exist")
+        if not os.path.exists("./cache/docmap.pkl"):
+            raise("ERROR: ./cache/docmap.pkl does not exist")
+
+        with open("./cache/index.pkl", "rb")as f1:
+            self.index = pickle.load(f1)
+        with open("./cache/docmap.pkl", "rb")as f2:
+            self.docmap = pickle.load(f2)
 
 
 
@@ -127,36 +139,50 @@ def tokenize(search):
     return searchTerms
 
 def search(search):
+    # results = []
+    # movies = {}
+
+    movieIndex = InvertedIndex()
+    movieIndex.load()
+
+    tokens = tokenize(search)
     results = []
-    movies = {}
+    for t in tokens:
+        ids = movieIndex.get_documents(t)
+        for id in ids:
+            results.append(movieIndex.docmap[id])
+            # if len(results) >= 5:
+            #     return results
+    return results
 
-    with open("./data/movies.json", "r") as file:
-        data = json.load(file)
-        if "movies" not in data:
-            print("ERROR: Key 'movies' not found in dictionary")
-            return
-        movies = data.get("movies")
 
-    for movie in movies:
-        if "title" not in movie:
-            print("ERROR: Key 'title' not found in dictionary")
-        title = movie.get("title")
-        searchTokens = tokenize(search)
-        targetTokens = tokenize(title)
-        previousSearchToken = ""
-        isAdded = False
-        for searchToken in searchTokens:
-            if searchToken != previousSearchToken and isAdded:
-                isAdded = False
-                previousSearchToken = searchToken
-                continue
-            for targetToken in targetTokens:
-                if searchToken in targetToken:
-                    results.append(movie)
-                    isAdded = True
-                    break
-            previousSearchToken = searchToken
-    return sorted(results, key=lambda movie: movie["id"])
+    # with open("./data/movies.json", "r") as file:
+    #     data = json.load(file)
+    #     if "movies" not in data:
+    #         print("ERROR: Key 'movies' not found in dictionary")
+    #         return
+    #     movies = data.get("movies")
+
+    # for movie in movies:
+    #     if "title" not in movie:
+    #         print("ERROR: Key 'title' not found in dictionary")
+    #     title = movie.get("title")
+    #     searchTokens = tokenize(search)
+    #     targetTokens = tokenize(title)
+    #     previousSearchToken = ""
+    #     isAdded = False
+    #     for searchToken in searchTokens:
+    #         if searchToken != previousSearchToken and isAdded:
+    #             isAdded = False
+    #             previousSearchToken = searchToken
+    #             continue
+    #         for targetToken in targetTokens:
+    #             if searchToken in targetToken:
+    #                 results.append(movie)
+    #                 isAdded = True
+    #                 break
+    #         previousSearchToken = searchToken
+    # return sorted(results, key=lambda movie: movie["id"])
 
 def get_stopwords():
     global stopwords
