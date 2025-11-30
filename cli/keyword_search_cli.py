@@ -11,6 +11,7 @@ from nltk.stem import PorterStemmer
 
 stopwords = []
 BM25_K1 = 1.5
+BM25_B = 0.75
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Keyword Search CLI")
@@ -39,6 +40,7 @@ def main() -> None:
     bm25tf.add_argument("doc_id", type=int, help="Document ID")
     bm25tf.add_argument("term", type=str, help="Term to get BM25 TF score for")
     bm25tf.add_argument("k1", type=float, nargs='?', default=BM25_K1, help="Tunable BM25 k1 parameter")
+    bm25tf.add_argument("b", type=float, nargs='?', default=BM25_B, help="Tunable BM25 b parameter")
 
     test = subparsers.add_parser("test", help="test functionality")
     test.add_argument("query", type=str, help="Search query")
@@ -87,7 +89,7 @@ def main() -> None:
         case "bm25tf":
             ii = InvertedIndex()
             ii.load()
-            bm25tf = ii.get_bm25_tf(args.doc_id, args.term, args.k1)
+            bm25tf = ii.get_bm25_tf(args.doc_id, args.term, args.k1, args.b)
             print(f"BM25 TF score of '{args.term}' in document '{args.doc_id}': {bm25tf:.2f}")
         case "test":
             ii = InvertedIndex()
@@ -101,6 +103,7 @@ class InvertedIndex:
     index = {}
     docmap = {}
     term_frequencies = {}
+    doc_lengths = {}
 
     def __init__(self):
         pass
@@ -114,11 +117,21 @@ class InvertedIndex:
             else:
                 self.index[token] = [doc_id]
 
+        self.doc_lengths[doc_id] = len(tokens)
+
         counter = Counter(tokens)
         if doc_id not in self.term_frequencies:
             self.term_frequencies[doc_id] = counter
         else:
             self.term_frequencies[doc_id].update(counter)
+
+    def __get_avg_doc_length(self):
+        doc_lengths = self.doc_lengths.values()
+        if len(doc_lengths) == 0:
+            return 0.0
+        total = sum(doc_lengths)
+        # total = map(lambda x, y: x + y, doc_lengths)
+        return total / len(doc_lengths) 
 
     def get_tf(self, doc_id: int, term: str):
         tokens = tokenize(term)
@@ -130,15 +143,6 @@ class InvertedIndex:
         if tokens[0] not in tf:
             return 0
         return tf[tokens[0]]
-
-
-    def test(self, term: str):
-        test = "An elderly English woman Amy Wilkinson (Carole Trangmar-Palmer), almost at her deathbed in London, wants to come down to Madras in search of a young man Ilam Parithi (Arya) whom she last saw on 15 August 1947 to return a thali (traditional wedding threads) of his mother, which he gave her as a sign of stating that she belongs to India and nobody can separate them. However, after a turn of events, she had married another man from her hometown and thus felt that the thali was no longer her property.\nAmy Wilkinson arrives in Madras with her granddaughter Catherine (Lisa Lazarus), equipped only with a picture of Parithi that was taken sixty years ago. Wilkinson interrogates various people about Parithi's whereabouts. In the process, she recalls the events when she had first visited Chennai, and the chain of events that took place:\nA young Amy (Amy Jackson), the daughter of the Madras Presidency Governor, visits Chennai (then called Madharasapattinam) along with her translator Nambi (Cochin Hanifa) and encounters Parithi, whom she calls \"brave man\". Parithi, a member of the dhobi (launderer) clan is also an experienced wrestler who trains under Ayyakanu (Nassar). He openly opposes the British officials who attempt to build a golf course in the dhobi clan's dwelling place. He challenges a cruel racist officer named Robert Ellis (Alexx O'Nell), who is also Amy's suitor, to a wrestling match to decide the fate of his clan's home. Parithi is successful, and Ellis vows revenge.\nFollowing a series of secret meetings between Parithi and Amy, love blossoms between them, and Parithi affectionately calls her \"Duraiyamma\", a polite term of addressing British women. However a major threat comes in the form of independence for India on 15 August 1947, which means that all White officials and their families, including Amy, would have to leave India. On the eve of independence, all of India is celebrating. However Amy and Parithi, determined to be together, run away and are hunted by an angry Ellis and his force. An Indian policeman helps the two of them by hiding them in a clock tower on top of the Madras Central Railway Station, but they are discovered by Ellis. After a fierce fight, Ellis is killed and Parithi is badly wounded. Amy helps Parithi to escape by casting him with a life-raft into the Coovum river, before she is captured and taken back to London. She had never known if Parithi survived, or what his fate was.\nBack in the present, Wilkinson is urgently called back to London to have a life-saving operation. But she is determined to find Parithi and, by chance, encounters a taxi driver who assumes that she would want to visit a charitable trust named Duraiyamma Foundation. The driver shows her around the foundation, which has organisations providing free housing, education and medical care (which were all promised to the dhobi children by the young Amy several years ago). She realizes that the Duraiyamma Foundation was established by Ilam Parithi, and named after her.\nThen When she asks the driver what became of Parithi, he leads her to his tomb, and reveals that he died twelve years ago. She kneels before the tomb and claims the thali (nuptial threads) as her own. She declares \"It's mine!\" before quietly passing away on Parithi's tomb. Her granddaughter mourns for her, and the taxi driver is dumbfounded to learn that the old woman was \"Duraiyamma\" herself. The epilogue shows Parithi and Amy (as they were in their younger days) in the afterlife, depicted as a 1940s-style Madharasapattinam. As the credits roll, a series of montage images are shown, illustrating the transformation of Madharasapattinam of the 1940s to modern-day Chennai."
-        test_index = tokenize(test)
-        test_index.sort()
-        print(test_index)
-        return test_index
-
 
     def get_documents(self, term: str):
         term = term.lower()
@@ -182,6 +186,8 @@ class InvertedIndex:
             pickle.dump(self.docmap, f2)
         with open("./cache/term_frequencies.pkl", "wb") as f3:
             pickle.dump(self.term_frequencies, f3)
+        with open("./cache/doc_lengths.pkl", "wb") as f4:
+            pickle.dump(self.doc_lengths, f4)
     
     def load(self):
         if not os.path.exists("./cache/index.pkl"):
@@ -190,6 +196,8 @@ class InvertedIndex:
             raise("ERROR: ./cache/docmap.pkl does not exist")
         if not os.path.exists("./cache/term_frequencies.pkl"):
             raise("ERROR: ./cache/term_frequencies.pkl does not exist")
+        if not os.path.exists("./cache/doc_lengths.pkl"):
+            raise("ERROR: ./cache/doc_lengths.pkl does not exist")
 
         with open("./cache/index.pkl", "rb")as f1:
             self.index = pickle.load(f1)
@@ -197,6 +205,8 @@ class InvertedIndex:
             self.docmap = pickle.load(f2)
         with open("./cache/term_frequencies.pkl", "rb")as f3:
             self.term_frequencies = pickle.load(f3)
+        with open("./cache/doc_lengths.pkl", "rb")as f4:
+            self.doc_lengths = pickle.load(f4)
     
     def get_bm25_idf(self, term: str):
         # N = total number of docs
@@ -214,11 +224,15 @@ class InvertedIndex:
             print("term not found")
         return math.log((n - df + 0.5) / (df + 0.5) + 1)
 
-    def get_bm25_tf(self, doc_id: int, term: str, k1 = BM25_K1):
+    def get_bm25_tf(self, doc_id: int, term: str, k1 = BM25_K1, b = BM25_B):
+        # length_norm = 1 - b + b * (doc_length / avg_doc_length)
         # (tf * (k1 + 1)) / (tf + k1)
+        doc_length = self.doc_lengths[doc_id]
+        avg_doc_length = self.__get_avg_doc_length()
+        length_norm = 1 - b + b * (doc_length / avg_doc_length)
         tf = self.get_tf(doc_id, term)
         print(tf)
-        return (tf * (k1 + 1)) / (tf + k1)
+        return (tf * (k1 + 1)) / (tf + k1 * length_norm)
 
 
 
