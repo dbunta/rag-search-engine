@@ -42,6 +42,10 @@ def main() -> None:
     bm25tf.add_argument("k1", type=float, nargs='?', default=BM25_K1, help="Tunable BM25 k1 parameter")
     bm25tf.add_argument("b", type=float, nargs='?', default=BM25_B, help="Tunable BM25 b parameter")
 
+    bm25search_parser = subparsers.add_parser("bm25search", help="Search movies using full BM25 scoring")
+    bm25search_parser.add_argument("query", type=str, help="Search query")
+    bm25search_parser.add_argument("limit", type=int, nargs='?', default=5, help="limit")
+
     test = subparsers.add_parser("test", help="test functionality")
     test.add_argument("query", type=str, help="Search query")
 
@@ -91,6 +95,12 @@ def main() -> None:
             ii.load()
             bm25tf = ii.get_bm25_tf(args.doc_id, args.term, args.k1, args.b)
             print(f"BM25 TF score of '{args.term}' in document '{args.doc_id}': {bm25tf:.2f}")
+        case "bm25search":
+            ii = InvertedIndex()
+            ii.load()
+            bm25_search_results = ii.bm25_search(args.query, args.limit)
+            for index, r in enumerate(bm25_search_results.values()):
+                print(f"{index}. ({r["movie"]["id"]}) {r["movie"]["title"]} - Score: {r["score"]:.2f}")
         case "test":
             ii = InvertedIndex()
             ii.load()
@@ -217,7 +227,6 @@ class InvertedIndex:
         term = terms[0]
         n = len(self.docmap)
         df = 0
-        print(term)
         if term in self.index:
             df = len(self.index[term])
         else:
@@ -231,10 +240,32 @@ class InvertedIndex:
         avg_doc_length = self.__get_avg_doc_length()
         length_norm = 1 - b + b * (doc_length / avg_doc_length)
         tf = self.get_tf(doc_id, term)
-        print(tf)
         return (tf * (k1 + 1)) / (tf + k1 * length_norm)
+    
+    def get_bm25(self, doc_id: int, term: str):
+        bm25idf = self.get_bm25_idf(term)
+        bm25tf = self.get_bm25_tf(doc_id, term)
+        return bm25idf * bm25tf
 
+    def bm25_search(self, query: str, limit: int):
+        tokens = tokenize(query)
+        scores = {}
+        for movie in self.docmap.values():
+            score = 0
+            for token in tokens:
+                score += self.get_bm25(movie["id"], token)
+            scores[movie["id"]] = score
 
+        sorted_scores = dict(sorted(scores.items(), key=lambda item: item[1], reverse=True))
+
+        retval = {}
+        counter = 0
+        for key in sorted_scores:
+            if counter >= limit:
+                break
+            retval[key] = {"score": sorted_scores[key], "movie": self.docmap[key]}
+            counter += 1
+        return retval
 
 def tokenize(search):
     search = search.lower()
