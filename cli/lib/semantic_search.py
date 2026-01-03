@@ -96,7 +96,6 @@ class ChunkedSemanticSearch(SemanticSearch):
                 self.chunk_embeddings = np.load(f)
             with open("cache/chunk_metadata.json", "r") as f2:
                 self.chunk_metadata = json.load(f2)
-                # self.chunk_metadata = np.load(f2)
             return self.chunk_embeddings
         else:
             return self.build_chunk_embeddings(documents)
@@ -123,7 +122,6 @@ class ChunkedSemanticSearch(SemanticSearch):
         sorted_movie_scores = dict(sorted_movie_scores_2[:limit])
         results = []
         for index, movie_score_key in enumerate(sorted_movie_scores.keys()):
-            print(movie_score_key)
             document = self.documents[movie_score_key]
             results.append(
                 {
