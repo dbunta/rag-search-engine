@@ -5,6 +5,7 @@ from lib.hybrid_search import normalize_scores, HybridSearch
 import os
 from dotenv import load_dotenv
 from google import genai
+from sentence_transformers import CrossEncoder
 
 
 def main() -> None:
@@ -24,7 +25,7 @@ def main() -> None:
     rrf_search_parser.add_argument("-k", type=int, default=60, help="")
     rrf_search_parser.add_argument("--limit", type=int, default=5, help="")
     rrf_search_parser.add_argument( "--enhance", type=str, choices=["spell","rewrite","expand"], help="Query enhancement method")
-    rrf_search_parser.add_argument( "--rerank-method", type=str, choices=["individual","batch"], help="")
+    rrf_search_parser.add_argument( "--rerank-method", type=str, choices=["individual","batch","cross_encoder"], help="")
 
     args = parser.parse_args()
 
@@ -40,6 +41,7 @@ def main() -> None:
             hs = HybridSearch(documents)
 
             query = args.query
+
             if args.enhance is not None and args.enhance == "spell":
                 prompt = f"""Fix any spelling errors in this movie search query.
 
@@ -124,13 +126,10 @@ def main() -> None:
                     print(f"{i+1}. {r["original_result"]["document"]["title"]}\r\n   Rerank Score: {r["ranking"]}/10\r\n   RRF Score: {r["original_result"]["score"]:.4f}\r\n   BM25 Rank: {r["original_result"]["bm25_rank"]}, Semantic Rank: {r["original_result"]["semantic_rank"]}\r\n   {r["original_result"]["document"]["description"][:50]}")
                 return
             if args.rerank_method is not None and args.rerank_method == "batch":
-                results = hs.rrf_search(query, args.limit, args.k)
+                results = hs.rrf_search(query, args.limit*5, args.k)
                 doc_list_str = ""
                 for d in list(results.values()):
                     doc_list_str += f'ID: {d['document']['id']}\r\nTitle: {d['document']["title"]}\r\n\r\n'
-                # doc_list_str = ", ".join(test)
-                # print(doc_list_str)
-                # exit()
                 new_scores = []
                 print("Reranking top 3 results using batch method...")
                 print(f"Reciprocal Rank Fusion Results for '{query}' (k={args.k}):\r\n")
@@ -152,20 +151,34 @@ def main() -> None:
                 for id in list(ranks):
                     sorted_results.append(results[id])
 
-                # new_scores.append({"ranking": int(new_result), "original_result": r})
-                # print(f"Enhanced query ({args.enhance}): '{args.query}' -> '{query}'\n")
+                for i, r in enumerate(sorted_results):
+                    print()
+                    print(f"{i+1}. {r["document"]["title"]}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
+                return
+            if args.rerank_method is not None and args.rerank_method == "cross_encoder":
+                results = hs.rrf_search(query, args.limit*5, args.k)
+                pairs = []
+                for r in results.values():
+                    doc = r['document']
+                    pairs.append([query, f"{doc.get('title', '')} - {doc}"])
+                cross_encoder = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L2-v2")
+                scores = cross_encoder.predict(pairs)
 
-                # sorted_results = sorted(new_scores, key=lambda item: item["ranking"], reverse=True)
-                # print(sorted_results[0])
-                # for i, r in enumerate(sorted_results[:args.limit]):
-                #     print()
-                #     print(f"{i+1}. {r["original_result"]["document"]["title"]}\r\n   Rerank Score: {r["ranking"]}/10\r\n   RRF Score: {r["original_result"]["score"]:.4f}\r\n   BM25 Rank: {r["original_result"]["bm25_rank"]}, Semantic Rank: {r["original_result"]["semantic_rank"]}\r\n   {r["original_result"]["document"]["description"][:50]}")
-                # return
+                # for i,s in enumerate(scores):
+                #     print(s)
+                #     results["new_score"] = s 
+                for i,r in enumerate(results.values()):
+                    r["cross_encoder_score"] = scores[i]
+                    print(r)
+                sorted_results = sorted(results.values(), key=lambda item: item["cross_encoder_score"], reverse=True)
 
+                
+                # print(pairs)
 
-            for i, r in enumerate(sorted_results):
-                print()
-                print(f"{i+1}. {r["document"]["title"]}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
+                # for i, r in enumerate(scores):
+                for i, r in enumerate(sorted_results):
+                    print(f"{i+1}. {r["document"]["title"]}\r\n   Cross Encoder Score{r["cross_encoder_score"]:.4f}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
+                return
         case "weighted-search":
             documents = []
             with open("./data/movies.json", "r") as file:

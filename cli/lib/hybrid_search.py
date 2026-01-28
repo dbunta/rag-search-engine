@@ -46,7 +46,8 @@ class HybridSearch:
             scores[key]["document"] = self.semantic_search.document_map[key]
         
         sorted_scores = dict(sorted(scores.items(), key=lambda item: item[1]["score"], reverse=True))
-        return sorted_scores
+        first_n = dict(list(sorted_scores.items())[:limit])
+        return first_n
 
     def _bm25_search(self, query, limit):
         self.idx.load()

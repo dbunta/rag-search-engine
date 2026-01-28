@@ -123,16 +123,17 @@ class InvertedIndex:
     def get_bm25_idf(self, term: str):
         # N = total number of docs
         # df = document frequency
-        terms = tokenize(term)
-        if len(terms) > 1:
-            raise("ERROR: Cannot search on more that one term")
-        term = terms[0]
+        # terms = tokenize(term)
+        # print(f"term: {term}\r\nterms: {terms}")
+        # if len(terms) > 1:
+        #     raise("ERROR: Cannot search on more that one term")
+        # term = terms[0]
         n = len(self.docmap)
         df = 0
-        if term in self.index:
-            df = len(self.index[term])
-        else:
-            print("term not found")
+        # if term in self.index:
+        df = len(self.index[term])
+        # else:
+        #     print("term not found")
         return math.log((n - df + 0.5) / (df + 0.5) + 1)
 
     def get_bm25_tf(self, doc_id: int, term: str, k1 = BM25_K1, b = BM25_B):
@@ -169,7 +170,7 @@ class InvertedIndex:
             counter += 1
         return retval
 
-def tokenize(search):
+def tokenize_old(search):
     search = search.lower()
     dict = {}
     for punc in string.punctuation:
@@ -182,6 +183,25 @@ def tokenize(search):
     for index, st in enumerate(searchTerms):
         searchTerms[index] = stemmer.stem(st)
     return searchTerms
+
+def tokenize(text: str) -> list[str]:
+    text = text.lower()
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    tokens = text.split()
+    valid_tokens = []
+    for token in tokens:
+        if token:
+            valid_tokens.append(token)
+    stop_words = get_stopwords()
+    filtered_words = []
+    for word in valid_tokens:
+        if word not in stop_words:
+            filtered_words.append(word)
+    stemmer = PorterStemmer()
+    stemmed_words = []
+    for word in filtered_words:
+        stemmed_words.append(stemmer.stem(word))
+    return stemmed_words
 
 def get_stopwords():
     global stopwords
