@@ -43,17 +43,23 @@ def main():
         for rel in tc["relevant_docs"]:
             if rel.lower() in title_list:
                 rel_docs.append(rel)
-        #precision = relevant_retrieved / total_retrieved
+        # precision = relevant_retrieved / total_retrieved
         precision = len(rel_docs) / len(title_list)
+        # recall = relevant_retrieved / total_relevant
+        recall = len(rel_docs) / len(tc["relevant_docs"])
+        # f1 = 2 * (precision * recall) / (precision + recall)
+        f1 = 2 * (precision * recall) / (precision + recall)
         tc["precision"] = precision
         tc["relevant"] = rel_docs
         tc["retrieved"] = title_list
+        tc["recall"] = recall
+        tc["f1"] = f1
     # print()
     # print(rel_docs)
     # print(f"k=6")
     print()
     for tc in test_cases:
-        print(f"- Query: {tc["query"]}\r\n  - Precision@{limit}: {tc["precision"]:.4f}\r\n  - Retrieved: {", ".join(tc["retrieved"])}\r\n  - Relevant: {", ".join(tc["relevant"])}")
+        print(f"- Query: {tc["query"]}\r\n  - Precision@{limit}: {tc["precision"]:.4f}\r\n  - Recall@{limit}: {tc["recall"]:.4f}\r\n  - F1 Score: {tc["f1"]:.4f}\r\n  - Retrieved: {", ".join(tc["retrieved"])}\r\n  - Relevant: {", ".join(tc["relevant"])}\r\n\r\n")
         
 
 

@@ -26,6 +26,7 @@ def main() -> None:
     rrf_search_parser.add_argument("--limit", type=int, default=5, help="")
     rrf_search_parser.add_argument( "--enhance", type=str, choices=["spell","rewrite","expand"], help="Query enhancement method")
     rrf_search_parser.add_argument( "--rerank-method", type=str, choices=["individual","batch","cross_encoder"], help="")
+    rrf_search_parser.add_argument( "--evaluate", type=bool, help="")
 
     args = parser.parse_args()
 

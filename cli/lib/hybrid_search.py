@@ -16,8 +16,9 @@ class HybridSearch:
             self.idx.save()
 
     def rrf_search(self, query, limit, k):
-        bm25_results = self._bm25_search(query, limit)
-        semantic_results = self.semantic_search.search_chunks(query, limit)
+        print(f"DEBUG: Original Query: '{query}'")
+        bm25_results = self._bm25_search(query, limit*500)
+        semantic_results = self.semantic_search.search_chunks(query, limit*500)
         scores = {}
         counter = 0
         for doc_id, keyword_result in bm25_results.items():
