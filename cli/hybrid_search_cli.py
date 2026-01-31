@@ -26,7 +26,7 @@ def main() -> None:
     rrf_search_parser.add_argument("--limit", type=int, default=5, help="")
     rrf_search_parser.add_argument( "--enhance", type=str, choices=["spell","rewrite","expand"], help="Query enhancement method")
     rrf_search_parser.add_argument( "--rerank-method", type=str, choices=["individual","batch","cross_encoder"], help="")
-    rrf_search_parser.add_argument( "--evaluate", type=bool, help="")
+    rrf_search_parser.add_argument( "--evaluate", action="store_true", help="")
 
     args = parser.parse_args()
 
@@ -93,10 +93,14 @@ def main() -> None:
                 print(f"Enhanced query ({args.enhance}): '{args.query}' -> '{query}'\n")
 
                 
-            results = {}
+            results = hs.rrf_search(query, args.limit*5, args.k)
+            sorted_results = results.values() 
+            formatted_results = []
+            for i,r in enumerate(sorted_results):
+                formatted_results.append(f"{i+1}. {r["document"]["title"]}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
 
             if args.rerank_method is not None and args.rerank_method == "individual":
-                results = hs.rrf_search(query, args.limit*5, args.k)
+                formatted_results = []
                 new_scores = []
                 print("Reranking top 3 results using individual method...")
                 print(f"Reciprocal Rank Fusion Results for '{query}' (k={args.k}):\r\n")
@@ -123,11 +127,10 @@ def main() -> None:
                 
                 sorted_results = sorted(new_scores, key=lambda item: item["ranking"], reverse=True)
                 for i, r in enumerate(sorted_results[:args.limit]):
+                    formatted_results.append(f"{i+1}. {r["original_result"]["document"]["title"]}\r\n   Rerank Score: {r["ranking"]}/10\r\n   RRF Score: {r["original_result"]["score"]:.4f}\r\n   BM25 Rank: {r["original_result"]["bm25_rank"]}, Semantic Rank: {r["original_result"]["semantic_rank"]}\r\n   {r["original_result"]["document"]["description"][:50]}")
                     print()
-                    print(f"{i+1}. {r["original_result"]["document"]["title"]}\r\n   Rerank Score: {r["ranking"]}/10\r\n   RRF Score: {r["original_result"]["score"]:.4f}\r\n   BM25 Rank: {r["original_result"]["bm25_rank"]}, Semantic Rank: {r["original_result"]["semantic_rank"]}\r\n   {r["original_result"]["document"]["description"][:50]}")
-                return
-            if args.rerank_method is not None and args.rerank_method == "batch":
-                results = hs.rrf_search(query, args.limit*5, args.k)
+            elif args.rerank_method is not None and args.rerank_method == "batch":
+                formatted_results = []
                 doc_list_str = ""
                 for d in list(results.values()):
                     doc_list_str += f'ID: {d['document']['id']}\r\nTitle: {d['document']["title"]}\r\n\r\n'
@@ -154,10 +157,9 @@ def main() -> None:
 
                 for i, r in enumerate(sorted_results):
                     print()
-                    print(f"{i+1}. {r["document"]["title"]}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
-                return
-            if args.rerank_method is not None and args.rerank_method == "cross_encoder":
-                results = hs.rrf_search(query, args.limit*5, args.k)
+                    formatted_results.append(f"{i+1}. {r["document"]["title"]}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
+            elif args.rerank_method is not None and args.rerank_method == "cross_encoder":
+                formatted_results = []
                 pairs = []
                 for r in results.values():
                     doc = r['document']
@@ -178,8 +180,40 @@ def main() -> None:
 
                 # for i, r in enumerate(scores):
                 for i, r in enumerate(sorted_results):
-                    print(f"{i+1}. {r["document"]["title"]}\r\n   Cross Encoder Score{r["cross_encoder_score"]:.4f}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
-                return
+                    print()
+                    formatted_results.append(f"{i+1}. {r["document"]["title"]}\r\n   Cross Encoder Score{r["cross_encoder_score"]:.4f}\r\n   RRF Score: {r["score"]:.4f}\r\n   BM25 Rank: {r["bm25_rank"]:.4f}, Semantic Rank: {r["semantic_rank"]:.4f}\r\n   {r["document"]["description"][:50]}")
+            
+            # print(*formatted_results, '\n')
+            for fr in formatted_results:
+                print(fr)
+
+            if args.evaluate:
+                prompt = f"""Rate how relevant each result is to this query on a 0-3 scale:
+                    Query: "{query}"
+
+                    Results:
+                    {chr(10).join(formatted_results)}
+
+                    Scale:
+                    - 3: Highly relevant
+                    - 2: Relevant
+                    - 1: Marginally relevant
+                    - 0: Not relevant
+
+                    Do NOT give any numbers out than 0, 1, 2, or 3.
+
+                    Return ONLY the scores in the same order you were given the documents. Return a valid JSON list, nothing else. For example:
+
+                    [2, 0, 3, 2, 0, 1]"""
+                
+                new_results = doTheAiStuff(prompt)
+                ranks = json.loads(new_results)
+                for i,sr in enumerate(sorted_results):
+                    print(f"{i+1}. {sr["document"]["title"]}: {ranks[i]}/3\n")
+
+
+            
+
         case "weighted-search":
             documents = []
             with open("./data/movies.json", "r") as file:
@@ -217,7 +251,7 @@ def doTheAiStuff(prompt:str):
     # print(response.text)
     # print(f"Prompt Tokens: {response.usage_metadata.prompt_token_count}")
     # print(f"Response Tokens: {response.usage_metadata.candidates_token_count}")
-    print(response)
+    # print(response)
     return response.text
 
 if __name__ == "__main__":
